@@ -1,102 +1,139 @@
-﻿using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-using BC = BCrypt.Net.BCrypt;
-using System;
+﻿using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.RegularExpressions;
+using BC = BCrypt.Net.BCrypt;
 
 namespace role_play.Models
 {
+    public class UserContext : DbContext //needs constructor
+    {
+        public UserContext(DbContextOptions<UserContext> options)
+            : base(options)
+        {
+        }
+
+        public DbSet<User> Users { get; set; } // Plural
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // unique index for Email
+            modelBuilder.Entity<User>()
+                .HasIndex(u => u.Email)
+                .IsUnique();
+        }
+    }
+
     public class User
     {
-
         private static readonly string[] Roles = new[] { "Admin", "User", "Guest" };
         private string username = null!;
-        private string password = null!;
+        private string passwordHash = null!; 
         private string email = null!;
         private string fullName = null!;
 
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string Id { get; set; }
-        [BsonElement("id")]
-        public required string FullName { get {
-            
-                //get first letter
-                string firstLetter = char.ToUpper(fullName[0]).ToString();
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; } // int for primary key (better than string)
 
-            }
-            set {
-                if (!value.Trim().Contains(" ")) {
-                    throw new ArgumentException("Full name must contain at least a first name and a last name.");
-                }
+        [Required]
+        public string FullName
+        {
+            get => fullName;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Full name cannot be empty.");
 
-                //fullName = value.Trim();
-                string sourceName = Regex.Replace(value.Trim(), @"\s+", " ");
+                string sourceName = value.Trim();
+                string pattern = @"^[A-Z][a-zA-Z]{3,}(?:\s+[A-Z][a-zA-Z]{3,})+$";
 
-                string[] nameParts = sourceName.Split(' ');
-                if (nameParts.Length < 2)
+                if (!Regex.IsMatch(sourceName, pattern))
                 {
-                    throw new ArgumentException("Full name must contain at least a first name and a last name.");
+                    throw new ArgumentException("Name must have first and last name, each starting with a capital letter and at least 4 characters long.");
                 }
 
-                nameParts[0][0].ToString().ToUpper();
-                nameParts[2][0].ToString().ToUpper();
-                
-                nameParts.Join(" ") = fullName;
+                fullName = Regex.Replace(sourceName, @"\s+", " ");
+            }
+        }
 
+        [Required]
+        public string Username
+        {
+            get => username;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Username cannot be empty.");
 
-            } }
-        [BsonElement("fullName")]
-        public required string Username { get {
-            return username;
-            } set{
                 if (value.Length < 3)
                 {
                     throw new ArgumentException("Username must be at least 3 characters long.");
                 }
+
+                if (!Regex.IsMatch(value, @"^[a-zA-Z0-9_]+$"))
+                {
+                    throw new ArgumentException("Username can only contain letters, numbers, and underscores.");
+                }
+
                 username = value.Trim();
             }
         }
-        [BsonElement("email")]
-        public required string Email
+
+        [Required]
+        [EmailAddress]
+        [MaxLength(255)]
+        public string Email
         {
-            get
-            {
-                return email;
-            }
+            get => email;
             set
             {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Email cannot be empty.");
+
                 const string EmailPattern = @"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$";
                 if (!Regex.IsMatch(value, EmailPattern, RegexOptions.IgnoreCase))
                 {
                     throw new ArgumentException("Invalid email format.");
                 }
-                email = value.Trim();
+                email = value.Trim().ToLower(); // lowercase for consistency
             }
         }
-        
-        [BsonElement("password")]
-        public required string Password { get { 
-                return password.Trim();
-            }
+
+        [Required]
+        [NotMapped] 
+        public string Password
+        {
             set
             {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Password cannot be empty.");
+
                 const string StrongPasswordPattern = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$";
 
                 if (!Regex.IsMatch(value, StrongPasswordPattern))
                 {
                     throw new ArgumentException("Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one digit, and one special character.");
-                } else if (value.Length < 6)
-                {
-                    throw new ArgumentException("Password must be at least 6 characters long.");
                 }
-                password = BC.HashPassword(value.Trim());
+
+                PasswordHash = BC.HashPassword(value.Trim());
             }
         }
-        
 
+        //  hash in database
+        public string PasswordHash
+        {
+            get => passwordHash;
+            private set => passwordHash = value;
+        }
 
-        [BsonElement("role")]
-        public string Role { get; set; } = Roles[1]; 
+        [Required]
+        [MaxLength(50)]
+        public string Role { get; set; } = "User"; // Default to "User"
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
     }
 }
