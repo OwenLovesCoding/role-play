@@ -1,15 +1,13 @@
 services:
   - type: web
     name: role-play-api
-    runtime: docker
-    repo: https://github.com/OwenLovesCoding/role-play
+    runtime: docker  # Required when using Dockerfile
     region: oregon
     plan: free
-    branch: main
-    buildCommand: dotnet publish -c Release -o output
-    startCommand: dotnet output/role-play.dll
+    # Remove buildCommand and startCommand when using Dockerfile
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: ConnectionStrings__DefaultConnection
-        value: postgresql://postgres:yFwomSrjwHWhSZFzzyMppoKhrNZqncQd@shortline.proxy.rlwy.net:49418/railway
+        value: "postgresql://postgres:yFwomSrjwHWhSZFzzyMppoKhrNZqncQd@shortline.proxy.rlwy.net:49418/railway"
+    healthCheckPath: /health
