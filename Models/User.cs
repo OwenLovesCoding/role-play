@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using role_play.Controllers;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.RegularExpressions;
@@ -30,7 +31,7 @@ namespace role_play.Models
     {
         private static readonly string[] Roles = new[] { "Admin", "User", "Guest" };
         private string username = null!;
-        private string passwordHash = null!; 
+        //private string password = null!; 
         private string email = null!;
         private string fullName = null!;
 
@@ -78,7 +79,7 @@ namespace role_play.Models
                     throw new ArgumentException("Username can only contain letters, numbers, and underscores.");
                 }
 
-                username = value.Trim();
+                username = value.Trim().ToLower();
             }
         }
 
@@ -102,38 +103,26 @@ namespace role_play.Models
             }
         }
 
+        // This is for INPUT ONLY - not stored in DB
         [Required]
-        [NotMapped] 
-        public string Password
-        {
-            set
-            {
-                if (string.IsNullOrWhiteSpace(value))
-                    throw new ArgumentException("Password cannot be empty.");
+        public string Password { get; set; } = null!;
 
-                const string StrongPasswordPattern = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$";
+        // This is what gets stored in DB
+        [Required]
+        public string PasswordHash { get; set; } = null!;
 
-                if (!Regex.IsMatch(value, StrongPasswordPattern))
-                {
-                    throw new ArgumentException("Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one digit, and one special character.");
-                }
+        public bool IsVerified { get; set; } = false;
 
-                PasswordHash = BC.HashPassword(value.Trim());
-            }
-        }
+        [MaxLength(6)]
+        public string? OTPCode { get; set; }
 
-        //  hash in database
-        public string PasswordHash
-        {
-            get => passwordHash;
-            private set => passwordHash = value;
-        }
+        public DateTime? OTPExpiry { get; set; }
 
         [Required]
         [MaxLength(50)]
         public string Role { get; set; } = "User"; // Default to "User"
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? UpdatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }
