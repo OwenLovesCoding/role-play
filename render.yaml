@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: role-play-api
+    runtime: docker
+    repo: https://github.com/OwenLovesCoding/role-play
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: dotnet publish -c Release -o output
+    startCommand: dotnet output/role-play.dll
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__DefaultConnection
+        value: postgresql://postgres:yFwomSrjwHWhSZFzzyMppoKhrNZqncQd@shortline.proxy.rlwy.net:49418/railway
