@@ -8,6 +8,6 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
-      - key: SQLServer__DefaultConnection
+      - key: ConnectionStrings__DefaultConnection
         value: "postgresql://postgres:yFwomSrjwHWhSZFzzyMppoKhrNZqncQd@shortline.proxy.rlwy.net:49418/railway"
     healthCheckPath: /health
