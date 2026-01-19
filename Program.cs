@@ -4,11 +4,16 @@ using Microsoft.EntityFrameworkCore;
 using role_play.Models;
 using FluentEmail.Core;
 using FluentEmail.Smtp;
+using Resend;
+//using ResendClient;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // connect db to the container.
 // Add DbContext with your database provider
+
+var connectionString = "Host=shortline.proxy.rlwy.net;Port=49418;Database=railway;Username=postgres;Password=yFwomSrjwHWhSZFzzyMppoKhrNZqncQd;SSL Mode=Require;Trust Server Certificate=true";
+
 builder.Services.AddDbContext<UserContext>(options =>
 {
     // Choose ONE based on your database:
@@ -20,7 +25,8 @@ builder.Services.AddDbContext<UserContext>(options =>
     // options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
 
     // For PostgreSQL:
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    //options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.UseNpgsql(connectionString);
 
     // For MySQL:
     // options.UseMySql(builder.Configuration.GetConnectionString("DefaultConnection"), 
@@ -32,23 +38,15 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-//Configure fluentemail
-//var emailSettings = builder.Configuration.GetSection("Brevo");
-var smtpClient = new SmtpClient(builder.Configuration["Mailjet:SmtpServer"])
-{
-    //Port = int.Parse(builder.Configuration["Mailjet:SMTPPort"]!),
-    Port = 587,
-    Credentials = new NetworkCredential(
-        builder.Configuration["Mailjet:Username"],
-        builder.Configuration["Mailjet:Password"]),
-    EnableSsl = true,
-};
-
-builder.Services
-    .AddFluentEmail(builder.Configuration["Mailjet:From"], builder.Configuration["Mailjet:From"])
-    .AddRazorRenderer()
-    .AddSmtpSender(smtpClient);
-
+// Resend
+builder.Services.AddOptions();
+builder.Services.AddHttpClient<ResendClient>();
+builder.Services.Configure<ResendClientOptions>(o => {
+    o.ApiToken = builder.Configuration["Resend:ApiKey"]!;
+});
+builder.Services.AddTransient<IResend, ResendClient>();
+//builder.Services.AddTransient<IResend>(sp =>
+//ResendClient.Create(builder.Configuration["Resend:ApiKey"]!));
 
 var app = builder.Build();
 

@@ -1,4 +1,4 @@
-﻿using FluentEmail.Core;
+﻿//using FluentEmail.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using role_play.DTOs;
@@ -6,28 +6,22 @@ using role_play.Models;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Resend;
 using BC = BCrypt.Net.BCrypt;
+
 
 namespace role_play.Controllers
 {
     [Route("api/[controller]")]
-    public class Users(UserContext context, IConfiguration configuration, IFluentEmail email) : ControllerBase
+    public class Users(UserContext context, IConfiguration configuration, IResend _resend) : ControllerBase
     {
         private readonly UserContext _context = context;
-        private readonly IFluentEmail _email = email;
+        private readonly IResend resend = _resend;
         private readonly IConfiguration _configuration = configuration;
 
 
-        [HttpGet("all-users")]
-        public IActionResult GetUsers()
-        {
-            var users = _context.Users.ToList();
-
-            return Ok(users);
-        }
-
         [HttpPost("new-user")]
-        public async Task<IActionResult> CreateUser([FromBody] User user)
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest user)
         { 
             // 1. check if user is null
             if (user == null)
@@ -35,23 +29,26 @@ namespace role_play.Controllers
                 return BadRequest("User data is required.");
             }
 
+            //return Ok(user);
 
-            // 2. Check if Password is null or empty
+
+            // Validate PlainPassword (from JSON)
             if (string.IsNullOrEmpty(user.Password))
             {
                 return BadRequest("Password is required.");
             }
 
-            // 3. Check for duplicate username/email BEFORE processing
-            if (_context.Users.Any(u => u.Username == user.Username))
-            {
-                return BadRequest("Username already exists.");
-            }
+            //3.Check for duplicate username/ email BEFORE processing
+                   if (!string.IsNullOrEmpty(user.Username) &&
+            await _context.Users.AnyAsync(u => u.Username == user.Username))
+                {
+                    return BadRequest("Username already exists.");
+                }
 
-            if (_context.Users.Any(u => u.Email == user.Email))
-            {
-                return BadRequest("Email already exists.");
-            }
+            //if (_context.Users.Any(u => u.Email == user.Email))
+            //{
+            //    return BadRequest("Email already exists.");
+            //}
 
             // 4. Validate password pattern
             const string StrongPasswordPattern = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$";
@@ -64,46 +61,47 @@ namespace role_play.Controllers
             try
             {
                 // 5. Hash the password
-                user.PasswordHash = BC.HashPassword(user.Password.Trim());
-
-                // 6. Clear plain password
-                user.Password = null!;
+                user.Password = BC.HashPassword(user.Password.Trim());
 
                 // 7. timestamps
                 user.CreatedAt = DateTime.UtcNow;
                 user.UpdatedAt = DateTime.UtcNow;
 
-
-                //const otpCode = Math.Ran
                 // Set new verification fields
                 user.IsVerified = false; // User starts as unverified
-                user.OTPCode = GenerateOTP(); // Generate 6-digit OTP
+                user.OTPCode = "555555"; // Generate 6-digit OTP
                 user.OTPExpiry = DateTime.UtcNow.AddMinutes(15); // OTP valid for 15 mins
 
-                // Set timestamps
-                user.CreatedAt = DateTime.UtcNow;
-                user.UpdatedAt = DateTime.UtcNow;
+                // Map CreateUserRequest to User entity
+                var newUser = new User
+                {
+                    FullName = user.FullName,
+                    Username = user.Username,
+                    Email = user.Email,
+                    Password = user.Password,
+                    Role = user.Role,
+                    IsVerified = user.IsVerified,
+                    OTPCode = user.OTPCode,
+                    OTPExpiry = user.OTPExpiry,
+                    CreatedAt = user.CreatedAt,
+                    UpdatedAt = user.UpdatedAt
+                };
 
                 // to database
-                _context.Users.Add(user);
+                _context.Users.Add(newUser);
                 await _context.SaveChangesAsync();
 
                 // 9. Return success
                 var response = new UserResponse
                 {
-                    Id = user.Id,
-                    FullName = user.FullName,
-                    Username = user.Username,
-                    Email = user.Email,
-                    Role = user.Role,
+                    Id = newUser.Id,
+                    FullName = newUser.FullName,
+                    Username = newUser.Username,
+                    Email = newUser.Email,
+                    Role = newUser.Role,
                 };
 
-
-
-                HandleEmailSending(user.Email,
-                    user.OTPCode,
-                    user.Username
-                );
+               await VerificationEmailSendingAsync(newUser.Email, newUser.Username);  
 
                 Console.WriteLine("Touched the email sending func in main flow and email sent");
                 return Ok(response);
@@ -115,196 +113,63 @@ namespace role_play.Controllers
             }
         }
 
-        [HttpPost("verify-email")]
-        public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
-        {
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == request.Email);
-
-            if (user == null)
-            {
-                return NotFound("User not found.");
-            }
-
-            if (user.IsVerified)
-            {
-                return BadRequest("Email is already verified.");
-            }
-
-            if (user.OTPCode != request.OTPCode)
-            {
-                return BadRequest("Invalid verification code.");
-            }
-
-            if (user.OTPExpiry < DateTime.UtcNow)
-            {
-                return BadRequest("Verification code has expired.");
-            }
-
-            // Mark as verified and clear OTP
-            user.IsVerified = true;
-            user.OTPCode = null;
-            user.OTPExpiry = null;
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-            
-            VerificationEmailSending(user.Email,
-                    user.Username
-                );
-
-            return Ok(new
-            {
-                success = true,
-                message = "Email verified successfully!",
-                user = new
-                {
-                    user.Id,
-                    user.Username,
-                    user.Email,
-                    user.IsVerified
-                }
-            });
-        }
-
-        [HttpPost("resend-otp")]
-        public async Task<IActionResult> ResendOTP([FromBody] ResendOtpRequest request)
-        {
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == request.Email);
-
-            if (user == null)
-            {
-                return NotFound("User not found.");
-            }
-
-            if (user.IsVerified)
-            {
-                return BadRequest("Email is already verified.");
-            }
-
-            // Generate new OTP
-            user.OTPCode = GenerateOTP();
-            user.OTPExpiry = DateTime.UtcNow.AddMinutes(15);
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            // Send new verification email
-            HandleEmailSending(user.Email, user.OTPCode, user.Username);
-
-            return Ok(new
-            {
-                success = true,
-                message = "New verification code sent to your email."
-            });
-        }
-
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest request)
-        {
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == request.Email);
-
-            if (user == null || !BC.Verify(request.Password, user.PasswordHash))
-            {
-                return Unauthorized("Invalid email or password.");
-            }
-
-            if (!user.IsVerified)
-            {
-                return BadRequest(new
-                {
-                    error = "Email not verified",
-                    message = "Please verify your email before logging in.",
-                    email = user.Email,
-                    canResend = true
-                });
-            }
-
-            // Return user data (excluding password)
-            return Ok(new
-            {
-                user.Id,
-                user.Username,
-                user.Email,
-                user.FullName,
-                user.Role,
-                user.IsVerified,
-                user.CreatedAt
-            });
-        }
-
-        private static string GenerateOTP()
-        {
-            Random random = new Random();
-            return random.Next(100000, 999999).ToString(); // 6-digit code
-        }
-
-        public async void HandleEmailSending(
-            string to,
-            string otpCode,
-            string user
-            //string subject,
-             //string items
-        )
+     
+        public async Task HandleEmailSendingAsync(string to, string otpCode, string username)
         {
             try
             {
-                Console.WriteLine("Touched the sending email func");
+                Console.WriteLine($"Attempting to send email to: {to}");
 
-                var responses = await _email
-               .To(to.Trim())
-              .Subject($"Verify Your Email - {to}")
-            .Body($@"
-                <div style='font-family: Arial, sans-serif; padding: 20px;'>
-                    <h2>Welcome to Leah, {user}!</h2>
-                    <p>Thank you for registering. Please use the code below to verify your email:</p>
-                    <div style='background: #f0f0f0; padding: 15px; margin: 20px 0; font-size: 24px; font-weight: bold; letter-spacing: 5px; text-align: center;'>
-                        {otpCode}
-                    </div>
-                    <p>This code will expire in 15 minutes.</p>
-                    <p>If you didn't create this account, please ignore this email.</p>
-                </div>", true)
-               .SendAsync();
+                var message = new EmailMessage();
+                message.From = "Acme <onboarding@resend.dev>";
+                message.To.Add(to);
+                message.Subject = "Your OTP Code";
+                message.HtmlBody = $@"
+            <h2>Hello {username},</h2>
+            <p>Your OTP code is: <strong>{otpCode}</strong></p>
+            <p>This code will expire in 10 minutes.</p>
+        ";
 
-                Console.WriteLine("Email sent successfully.");
+                await _resend.EmailSendAsync(message);
 
+                Console.WriteLine("Email sent successfully!");
             }
             catch (Exception ex)
             {
-                //return ex.Message;
+                Console.WriteLine($"Email sending failed: {ex.Message}");
+                throw;
             }
         }
 
-        public async void VerificationEmailSending(
+        public async Task VerificationEmailSendingAsync(
             string to,
-            string user
-            //string subject,
-             //string items
-        )
+            string username)
         {
             try
             {
-                Console.WriteLine("Touched the verification email sending");
+                Console.WriteLine($"Sending verification success email to: {to}");
 
-                var responses = await _email
-               .To(to.Trim())
-              .Subject($"Your email has been Verified - {to}")
-            .Body($@"
+                var message = new EmailMessage();
+                message.From = "Acme <onboarding@resend.dev>";
+                message.To.Add(to);
+                message.Subject = $"Welcome to Leah {username}";
+                message.HtmlBody = $@"
                 <div style='font-family: Arial, sans-serif; padding: 20px;'>
-                    <h2>Welcome to Leah once more, {user}!</h2>
-                    <p>Thank you for registering. We can not wait to see the exciting things we can do together</p>
-                </div>", true)
-               .SendAsync();
+                    <h2>Welcome to Leah once more, {username}!</h2>
+                    <p>Your email has been successfully verified. We can't wait to see the exciting things we can do together!</p>
+                    <p>You can now log in to your account.</p>
+                </div>";
 
-                Console.WriteLine("Verification Successful Email sent successfully.");
+                await _resend.EmailSendAsync(message);
 
+                Console.WriteLine("Welcome Email sent successfully!");
             }
             catch (Exception ex)
             {
-                //return ex.Message;
+                Console.WriteLine($"Verification email failed: {ex.Message}");
             }
+        }
+        
         }
     }
-}
+
