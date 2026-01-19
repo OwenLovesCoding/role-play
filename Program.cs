@@ -20,7 +20,7 @@ builder.Services.AddDbContext<UserContext>(options =>
     // options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
 
     // For PostgreSQL:
-     options.UseNpgsql(builder.Configuration["SQLServer:DefaultConnection"]);
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
 
     // For MySQL:
     // options.UseMySql(builder.Configuration.GetConnectionString("DefaultConnection"), 
