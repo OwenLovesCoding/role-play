@@ -12,7 +12,14 @@ var builder = WebApplication.CreateBuilder(args);
 // connect db to the container.
 // Add DbContext with your database provider
 
-var connectionString = "Host=shortline.proxy.rlwy.net;Port=49418;Database=railway;Username=postgres;Password=yFwomSrjwHWhSZFzzyMppoKhrNZqncQd;SSL Mode=Require;Trust Server Certificate=true";
+//var connectionString = "Host=shortline.proxy.rlwy.net;Port=49418;Database=railway;Username=postgres;Password=yFwomSrjwHWhSZFzzyMppoKhrNZqncQd;SSL Mode=Require;Trust Server Certificate=true";
+
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (!string.IsNullOrEmpty(connectionString))
+{
+    Console.WriteLine($"Connection string starts with: {connectionString.Substring(0, Math.Min(30, connectionString.Length))}...");
+}
 
 builder.Services.AddDbContext<UserContext>(options =>
 {
@@ -25,9 +32,7 @@ builder.Services.AddDbContext<UserContext>(options =>
     // options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
 
     // For PostgreSQL:
-    //options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
-    options.UseNpgsql(connectionString);
-
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
     // For MySQL:
     // options.UseMySql(builder.Configuration.GetConnectionString("DefaultConnection"), 
     //     new MySqlServerVersion(new Version(8, 0, 0)));
