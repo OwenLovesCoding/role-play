@@ -1,13 +1,12 @@
 services:
   - type: web
     name: role-play-api
-    runtime: docker  # Required when using Dockerfile
+    runtime: docker
     region: oregon
     plan: free
-    # Remove buildCommand and startCommand when using Dockerfile
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: ConnectionStrings__DefaultConnection
-        value: "postgresql://postgres:yFwomSrjwHWhSZFzzyMppoKhrNZqncQd@shortline.proxy.rlwy.net:49418/railway"
+        sync: false  
     healthCheckPath: /health
