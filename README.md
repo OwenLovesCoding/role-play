@@ -1,11 +1,8 @@
-readme for me i can put on git, i am done with project
 Leah - Role Play API 🎭
 A modern, secure RESTful API for user authentication and management built with ASP.NET Core and PostgreSQL. Features email verification, OTP-based authentication, and secure password handling.
 
 🚀 Live Demo
 API Base URL: https://role-play-j81w.onrender.com
-
-Health Check: https://role-play-j81w.onrender.com/health
 
 ✨ Features
 ✅ User Registration with email verification
